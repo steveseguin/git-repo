@@ -199,6 +199,13 @@ If no project is specified try to use current directory as a project.
                     project._FastForward(dl.commit, ffonly=True)
                 else:
                     if opt.branch:
+                        # StartBranch reuses existing branches without applying
+                        # revision, which would silently leave the old patchset.
+                        if opt.branch in project.GetBranches():
+                            raise GitError(
+                                f"branch {opt.branch} already exists",
+                                project=project.name,
+                            )
                         project.StartBranch(opt.branch, revision=dl.commit)
                     else:
                         project._Checkout(dl.commit)

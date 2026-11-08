@@ -1214,6 +1214,88 @@ class ExtendProjectElementTests(ManifestParseTestCase):
         self.assertEqual(len(manifest.projects), 1)
         self.assertEqual(manifest.projects[0].upstream, "bar")
 
+    def _get_relocated_project(
+        self, default_remote, alias, multimanifest, override_remote=False
+    ):
+        alias_attr = 'alias="origin"' if alias else ""
+        default_attr = 'remote="default"' if default_remote else ""
+        override_attr = 'remote="replacement"' if override_remote else ""
+        submanifest = (
+            '<submanifest name="child" path="child" remote="original" '
+            'project="manifest" />'
+            if multimanifest
+            else ""
+        )
+        manifest = self.getXmlManifest(
+            f"""<manifest>
+  <remote name="default" fetch="https://example.invalid/default" />
+  <remote name="original" {alias_attr}
+          fetch="https://example.invalid/original" />
+  <remote name="replacement" alias="replacement-alias"
+          fetch="https://example.invalid/replacement" />
+  <default {default_attr} revision="main" />
+  {submanifest}
+  <project name="repo" path="before" remote="original" />
+  <extend-project name="repo" dest-path="after" {override_attr} />
+</manifest>"""
+        )
+        self.assertEqual(list(manifest.paths), ["after"])
+        project = manifest.projects[0]
+        self.assertEqual(project.relpath, "after")
+        self.assertEqual(project.worktree, os.path.join(self.tempdir, "after"))
+        return project
+
+    def test_extend_project_dest_path_without_default_remote(self):
+        """Relocation preserves a per-project remote without a default."""
+        for multimanifest in (False, True):
+            for alias in (False, True):
+                with self.subTest(multimanifest=multimanifest, alias=alias):
+                    project = self._get_relocated_project(
+                        False, alias, multimanifest
+                    )
+                    self.assertEqual(project.remote.orig_name, "original")
+                    self.assertEqual(
+                        project.remote.name, "origin" if alias else "original"
+                    )
+                    parts = [self.repodir, "project-objects"]
+                    if multimanifest:
+                        parts.append("original")
+                    self.assertEqual(
+                        project.objdir, os.path.join(*parts, "repo.git")
+                    )
+
+    def test_extend_project_dest_path_preserves_remote_namespace(self):
+        """A different default remote must not change the object directory."""
+        for alias in (False, True):
+            with self.subTest(alias=alias):
+                project = self._get_relocated_project(True, alias, True)
+                self.assertEqual(project.remote.orig_name, "original")
+                self.assertEqual(
+                    project.objdir,
+                    os.path.join(
+                        self.repodir, "project-objects", "original", "repo.git"
+                    ),
+                )
+
+    def test_extend_project_dest_path_with_remote_override(self):
+        """An explicit replacement uses its original name, not its alias."""
+        for multimanifest in (False, True):
+            for default_remote in (False, True):
+                with self.subTest(
+                    multimanifest=multimanifest, default_remote=default_remote
+                ):
+                    project = self._get_relocated_project(
+                        default_remote, True, multimanifest, True
+                    )
+                    self.assertEqual(project.remote.orig_name, "replacement")
+                    self.assertEqual(project.remote.name, "replacement-alias")
+                    parts = [self.repodir, "project-objects"]
+                    if multimanifest:
+                        parts.append("replacement")
+                    self.assertEqual(
+                        project.objdir, os.path.join(*parts, "repo.git")
+                    )
+
 
 class NormalizeUrlTests(ManifestParseTestCase):
     """Tests for normalize_url() in manifest_xml.py"""

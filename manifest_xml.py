@@ -1510,7 +1510,9 @@ https://gerrit.googlesource.com/git-repo/+/HEAD/docs/manifest-format.md
                             gitdir,
                             objdir,
                             _,
-                        ) = self.GetProjectPaths(name, dest_path, remote.name)
+                        ) = self.GetProjectPaths(
+                            name, dest_path, p.remote.orig_name
+                        )
                         p.UpdatePaths(relpath, worktree, gitdir, objdir)
                         self._paths[p.relpath] = p
 
